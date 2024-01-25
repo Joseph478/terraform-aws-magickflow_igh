@@ -1,26 +1,7 @@
 
-
-# bucket magickbucket is not required
-resource "aws_s3_bucket" "s3_bucket" {
-    bucket = "magickbucket${var.name_main}"
-    force_destroy = true
-}
-
-resource "aws_s3_bucket_ownership_controls" "ownership_controls" {
-    bucket = aws_s3_bucket.s3_bucket.id
-    rule {
-        object_ownership = "BucketOwnerPreferred"
-    }
-}
-
-resource "aws_s3_bucket_acl" "s3_bucket_acl" {
-    depends_on = [aws_s3_bucket_ownership_controls.ownership_controls]
-    bucket = aws_s3_bucket.s3_bucket.id
-    acl    = "private"
-}
-
 resource "aws_s3_bucket" "codepipeline_bucket" {
     bucket = "codepipeline-bucket-${var.name_main}"
+    # pasarlo a var
     force_destroy = true
 }
 
@@ -110,8 +91,6 @@ data "aws_iam_policy_document" "iam_policy_document_codebuild" {
         resources = [
             aws_s3_bucket.codepipeline_bucket.arn,
             "${aws_s3_bucket.codepipeline_bucket.arn}/*",
-            aws_s3_bucket.s3_bucket.arn,
-            "${aws_s3_bucket.s3_bucket.arn}/*"
         ]
     }
 
@@ -144,11 +123,13 @@ data "aws_iam_policy_document" "iam_policy_document_codebuild" {
 resource "aws_iam_policy" "iam_policy" {
     name        = "CodeBuildBasePolicy-docker-build-${var.name_main}"
     description = "IAM Policy for logs, ec2 and s3"
+    # definirlo en archivo externo
     policy = data.aws_iam_policy_document.iam_policy_document_codebuild.json
 }
 
 resource "aws_iam_role" "iam_role" {
     name               = "codebuild-docker-build-service-role-${var.name_main}"
+    # cambiarlo a archivo externo
     assume_role_policy = file("${path.module}/iamPolicies/assume_role_policy.json")
     managed_policy_arns = ["arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess", aws_iam_policy.iam_policy.arn]
 }
@@ -264,8 +245,6 @@ data "aws_iam_policy_document" "codepipeline_policy" {
         resources = [
             aws_s3_bucket.codepipeline_bucket.arn,
             "${aws_s3_bucket.codepipeline_bucket.arn}/*",
-            aws_s3_bucket.s3_bucket.arn,
-            "${aws_s3_bucket.s3_bucket.arn}/*"
         ]
     }
 
