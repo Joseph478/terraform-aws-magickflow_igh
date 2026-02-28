@@ -27,12 +27,13 @@ resource "aws_codecommit_repository" "codecommit_repository" {
     }
 }
 
-# Credenciales GitHub para CodeBuild - solo cuando source_type = "github"
-resource "aws_codebuild_source_credential" "github" {
-    count       = var.source_type == "github" ? 1 : 0
-    auth_type   = "PERSONAL_ACCESS_TOKEN"
-    server_type = "GITHUB"
-    token       = var.github_oauth_token
+# Conexión CodeStar con GitHub (v2) - solo cuando source_type = "github"
+# IMPORTANTE: tras el apply, debes ir a AWS Console → CodePipeline → Connections
+# y completar la autorización de la conexión (estado PENDING → AVAILABLE)
+resource "aws_codestarconnections_connection" "github" {
+    count         = var.source_type == "github" ? 1 : 0
+    name          = "github-connection-${var.name_main}"
+    provider_type = "GitHub"
 }
 
 data "aws_iam_policy_document" "iam_policy_document_codebuild" {
@@ -153,17 +154,17 @@ resource "aws_codebuild_project" "codebuild_project" {
     service_role = aws_iam_role.iam_role.arn
 
     source {
-        type     = var.source_type == "codecommit" ? "CODECOMMIT" : "GITHUB"
-        location = var.source_type == "codecommit" ? aws_codecommit_repository.codecommit_repository[0].clone_url_http : "https://github.com/${var.github_owner}/${var.github_repo}.git"
-        git_clone_depth = 1
+        type            = var.source_type == "codecommit" ? "CODECOMMIT" : "CODEPIPELINE"
+        location        = var.source_type == "codecommit" ? aws_codecommit_repository.codecommit_repository[0].clone_url_http : null
+        git_clone_depth = var.source_type == "codecommit" ? 1 : null
     }
 
     artifacts {
-        name      = "build_output"
-        location  = aws_s3_bucket.codepipeline_bucket.bucket
-        type      = "S3"
-        path      = "/"
-        packaging = "ZIP"
+        type      = var.source_type == "codecommit" ? "S3" : "CODEPIPELINE"
+        name      = var.source_type == "codecommit" ? "build_output" : null
+        location  = var.source_type == "codecommit" ? aws_s3_bucket.codepipeline_bucket.bucket : null
+        path      = var.source_type == "codecommit" ? "/" : null
+        packaging = var.source_type == "codecommit" ? "ZIP" : null
     }
 
     environment {
@@ -262,6 +263,15 @@ data "aws_iam_policy_document" "codepipeline_policy" {
         }
     }
 
+    dynamic "statement" {
+        for_each = var.source_type == "github" ? [1] : []
+        content {
+            effect    = "Allow"
+            actions   = ["codestar-connections:UseConnection"]
+            resources = [aws_codestarconnections_connection.github[0].arn]
+        }
+    }
+
     statement {
         effect = "Allow"
         actions = [
@@ -326,23 +336,22 @@ resource "aws_codepipeline" "codepipeline" {
             }
         }
 
-        # Accion GitHub - activa cuando source_type = "github"
+        # Accion GitHub v2 (CodeStar Connection) - activa cuando source_type = "github"
         dynamic "action" {
             for_each = var.source_type == "github" ? [1] : []
             content {
                 name             = "Source"
                 category         = "Source"
-                owner            = "ThirdParty"
-                provider         = "GitHub"
+                owner            = "AWS"
+                provider         = "CodeStarSourceConnection"
                 version          = "1"
                 output_artifacts = ["source_output"]
 
                 configuration = {
-                    Owner                = var.github_owner
-                    Repo                 = var.github_repo
-                    Branch               = var.github_branch
-                    OAuthToken           = var.github_oauth_token
-                    PollForSourceChanges = var.pollForSourceChanges
+                    ConnectionArn        = aws_codestarconnections_connection.github[0].arn
+                    FullRepositoryId     = "${var.github_owner}/${var.github_repo}"
+                    BranchName           = var.github_branch
+                    OutputArtifactFormat = "CODE_ZIP"
                 }
             }
         }
@@ -375,7 +384,7 @@ resource "aws_codepipeline" "codepipeline" {
             category        = "Deploy"
             owner           = "AWS"
             provider        = "ECS"
-            input_artifacts = ["source_output"]
+            input_artifacts = ["build_output"]
             version         = "1"
 
             configuration = {
