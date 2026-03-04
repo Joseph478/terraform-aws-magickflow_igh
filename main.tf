@@ -16,6 +16,13 @@ resource "aws_s3_bucket_acl" "codepipeline_bucket_acl" {
     acl        = "private"
 }
 
+resource "aws_s3_bucket_versioning" "codepipeline_bucket_versioning" {
+    bucket = aws_s3_bucket.codepipeline_bucket.id
+    versioning_configuration {
+        status = "Enabled"
+    }
+}
+
 # Solo se crea cuando source_type = "codecommit"
 resource "aws_codecommit_repository" "codecommit_repository" {
     count           = var.source_type == "codecommit" ? 1 : 0
@@ -172,6 +179,7 @@ resource "aws_codebuild_project" "codebuild_project" {
         image                       = "aws/codebuild/amazonlinux2-x86_64-standard:4.0"
         type                        = "LINUX_CONTAINER"
         image_pull_credentials_type = "CODEBUILD"
+        privileged_mode             = true
 
         environment_variable {
             name  = "ENV"
@@ -238,6 +246,9 @@ data "aws_iam_policy_document" "codepipeline_policy" {
             "s3:GetObject",
             "s3:GetObjectVersion",
             "s3:GetBucketVersioning",
+            "s3:GetBucketAcl",
+            "s3:GetBucketLocation",
+            "s3:ListBucket",
             "s3:PutObjectAcl",
             "s3:PutObject",
         ]
