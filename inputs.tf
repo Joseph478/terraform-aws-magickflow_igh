@@ -57,6 +57,12 @@ variable "github_branch" {
     type        = string
 }
 
+variable "github_detect_changes" {
+    default     = true
+    description = "Whether CodePipeline should automatically detect changes in the GitHub repository. Used when source_type = 'github'"
+    type        = bool
+}
+
 variable "github_oauth_token" {
     default     = ""
     description = "GitHub personal access token. Required when source_type = 'github'"

@@ -363,6 +363,7 @@ resource "aws_codepipeline" "codepipeline" {
                     FullRepositoryId     = "${var.github_owner}/${var.github_repo}"
                     BranchName           = var.github_branch
                     OutputArtifactFormat = "CODE_ZIP"
+                    DetectChanges        = tostring(var.github_detect_changes)
                 }
             }
         }
