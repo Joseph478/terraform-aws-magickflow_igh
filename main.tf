@@ -1,6 +1,8 @@
 resource "aws_s3_bucket" "codepipeline_bucket" {
     bucket        = "codepipeline-bucket-${var.name_main}"
     force_destroy = true
+
+    tags = var.tags
 }
 
 resource "aws_s3_bucket_ownership_controls" "codepipeline_ownership_controls" {
@@ -29,9 +31,9 @@ resource "aws_codecommit_repository" "codecommit_repository" {
     repository_name = "Repository_${var.name_main}"
     description     = "This is the project private"
     default_branch  = "main"
-    tags = {
+    tags = merge(var.tags, {
         "ENV" = "PROD"
-    }
+    })
 }
 
 # Conexión CodeStar con GitHub (v2) - solo cuando source_type = "github"
@@ -41,6 +43,8 @@ resource "aws_codestarconnections_connection" "github" {
     count         = var.source_type == "github" ? 1 : 0
     name          = "github-connection-${var.name_main}"
     provider_type = "GitHub"
+
+    tags = var.tags
 }
 
 data "aws_iam_policy_document" "iam_policy_document_codebuild" {
@@ -138,11 +142,15 @@ resource "aws_iam_policy" "iam_policy" {
     name        = "CodeBuildBasePolicy-docker-build-${var.name_main}"
     description = "IAM Policy for logs, ec2 and s3"
     policy      = data.aws_iam_policy_document.iam_policy_document_codebuild.json
+
+    tags = var.tags
 }
 
 resource "aws_iam_role" "iam_role" {
     name               = "codebuild-docker-build-service-role-${var.name_main}"
     assume_role_policy = file("${path.module}/iamPolicies/assume_role_policy.json")
+
+    tags = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "ecr_policy" {
@@ -187,12 +195,14 @@ resource "aws_codebuild_project" "codebuild_project" {
         }
     }
 
-    tags = {
+    tags = merge(var.tags, {
         Environment = "Test"
-    }
+    })
 }
 
-resource "aws_kms_key" "a" {}
+resource "aws_kms_key" "a" {
+    tags = var.tags
+}
 
 resource "aws_kms_alias" "a" {
     name          = "alias/KmsKey${var.name_main}"
@@ -308,6 +318,8 @@ data "aws_iam_policy_document" "codepipeline_policy" {
 resource "aws_iam_role" "codepipeline_role" {
     name               = "codepipeline-role-${var.name_main}"
     assume_role_policy = data.aws_iam_policy_document.assume_role.json
+
+    tags = var.tags
 }
 
 resource "aws_iam_role_policy" "codepipeline_policy" {
@@ -319,6 +331,7 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
 resource "aws_codepipeline" "codepipeline" {
     name     = "ECS_pipeline_${var.name_main}"
     role_arn = aws_iam_role.codepipeline_role.arn
+    tags     = var.tags
 
     artifact_store {
         location = aws_s3_bucket.codepipeline_bucket.bucket
